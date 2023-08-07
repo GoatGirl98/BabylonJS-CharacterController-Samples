@@ -10,14 +10,22 @@ function main() {
          */
         canvas = document.querySelector("#renderCanvas");
         var engine = new BABYLON.Engine(canvas, true);
+
+        // var scene = createScene();
+
+        
         var scene = new BABYLON.Scene(engine);
+
+        
+        
+
         //scene.useRightHandedSystem = true;
 
         scene.clearColor = new BABYLON.Color3(0.75, 0.75, 0.75);
         scene.ambientColor = new BABYLON.Color3(1, 1, 1);
 
         scene.debugLayer.show({ showExplorer: true, embedMode: true });
-
+        
         var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
         light.intensity = 1;
 
@@ -30,14 +38,26 @@ function main() {
 
         let groundMaterial = createGroundMaterial(scene);
         var ground = createGround(scene, groundMaterial);
+
+
+
         loadPlayer(scene, engine, canvas);
+
+        
 
         window.addEventListener("resize", function () {
                 engine.resize();
         });
+        document.getElementById("fps").innerHTML = "FPS: " + engine.getFps().toFixed() + " fps";
+        document.getElementById("meshes").innerHTML = "Meshes: " + scene.meshes.length;
+
 }
 
+
+
 var cc, cc1, cc2;
+
+
 
 function loadPlayer(scene, engine, canvas) {
         BABYLON.SceneLoader.ImportMesh("", "player/", "Vincent-frontFacing.babylon", scene, function (meshes, particleSystems, skeletons) {
@@ -150,6 +170,7 @@ function loadPlayer(scene, engine, canvas) {
                 loadNPC(scene, engine, canvas);
         });
 }
+
 
 function loadNPC(scene, engine, canvas) {
         BABYLON.SceneLoader.ImportMesh("", "player/", "starterAvatars.babylon", scene, function (meshes, particleSystems, skeletons) {
@@ -275,7 +296,7 @@ function createGround(scene, groundMaterial) {
 
 function createGroundMaterial(scene) {
         let groundMaterial = new BABYLON.StandardMaterial("groundMat", scene);
-        groundMaterial.diffuseTexture = new BABYLON.Texture("ground/ground.jpg", scene);
+        groundMaterial.diffuseTexture = new BABYLON.Texture("ground/ground-normal.png", scene);
         groundMaterial.diffuseTexture.uScale = 4.0;
         groundMaterial.diffuseTexture.vScale = 4.0;
 
@@ -298,6 +319,7 @@ function showControls() {
         var el = document.getElementById("controls");
         el.style.visibility = "visible";
 }
+
 
 var w,
         wb,
@@ -329,6 +351,8 @@ function setUIValues() {
         //for npc third person mode is always disabled.
         document.getElementById("tp").disabled = (cc == cc2);
         document.getElementById("toff").disabled = (cc == cc2);
+
+        
 }
 
 
@@ -448,4 +472,6 @@ function setControls() {
                 }
                 animPaused = !animPaused;
         };
+
+        
 }
