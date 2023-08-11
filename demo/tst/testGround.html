@@ -50,18 +50,20 @@
   </style>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="w3.css" media="screen" />
+  
+
+
   <script src="../node_modules/babylonjs/babylon.max.js"></script>
   <script src="../node_modules/babylonjs-loaders/babylonjs.loaders.min.js"></script>
   <script src="../node_modules/babylonjs-inspector/babylon.inspector.bundle.js"></script>
   <script src="../node_modules/babylonjs-gui/babylon.gui.min.js"></script>
   <script src="../node_modules/babylonjs-materials/babylonjs.materials.min.js"></script>
   <script src="../dist/CharacterController.js"></script>
-  <script src="testGround.js"></script>
 </head>
 
 <body>
-  <canvas id="renderCanvas" tabindex="-1"></canvas>
-
+  <canvas id="renderCanvas"></canvas>
+  <script src="testGround.js"></script>
   <div id="controls" style="opacity: 0.9;" class="w3-round w3-card-4 w3-grey">
     <ui class="w3-ul w3-left">
       <li>
@@ -83,22 +85,15 @@
         <input type="checkbox" id="toff" class="w3-check" />turning off
       </li>
       <li><input type="checkbox" id="kb" checked class="w3-check" />enable keyboard</li>
-      <li><button id="help">help</button></li>
       <div id = "fps">0</div>
+      <div id = "absolute-fps">0</div>
+      <div id = "shader-count">0</div>
       <div id = "meshes">0</div>
+      <div id = "total-character">0</div>
+      <div id = "any-movement">0</div>
     </ui>
   </div>
 
-  <div id="overlay">
-    <div class="w3-card-4 w3-round w3-grey w3-padding">
-      <h3>Demo of CharacterController for Babylonjs</h3>
-      <p>
-        For more information and source code, head on over to <br />
-        <a href="https://ssatguru.github.io/BabylonJS-CharacterController/" target="link"> https://ssatguru.github.io/BabylonJS-CharacterController/</a>
-      </p>
-      <button id="closehelp">close</button>
-    </div>
-  </div>
 </body>
 
 </html>
