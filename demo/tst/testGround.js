@@ -1,390 +1,283 @@
-window.onload = function () {
-    main();
-};
+var canvas = document.getElementById("renderCanvas");
 
-var canvas;
-function main() {
+var startRenderLoop = function (engine, canvas) {
+    engine.runRenderLoop(function () {
+        if (sceneToRender && sceneToRender.activeCamera) {
+            sceneToRender.render();
+        }
+    });
+}
 
-    /*
-     * The scene
-     */
-    canvas = document.querySelector("#renderCanvas");
-    var engine = new BABYLON.Engine(canvas, true);
+var timeStamp = 0.0;
+var engine = null;
+var scene = null;
+var sceneToRender = null;
 
-    // var scene = createScene();
+// engine and etc.
 
-    
-    var scene = new BABYLON.Scene(engine);
+// WebGL2 - Parallel shader compilation
+// var createDefaultEngine = function () { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, disableWebGL2Support: false }); };
+// WebGPU1
+var createDefaultEngine = async function () {
+    var engine = new BABYLON.WebGPUEngine(canvas);
+    // non compatibility mode for webGPU 
+    engine.compatibilityMode = false;
 
-    
-    
+    // todo : snapshot rendering optimization for webGPU
+    // engine.snapshotRenderingMode = BABYLON.Constants.SNAPSHOTRENDERING_FAST (or BABYLON.Constants.SNAPSHOTRENDERING_STANDARD);
+    // engine.snapshotRendering = true;
+    await engine.initAsync();
+    return engine;
+}
 
-    //scene.useRightHandedSystem = true;
-
-    scene.clearColor = new BABYLON.Color3(0.75, 0.75, 0.75);
-    scene.ambientColor = new BABYLON.Color3(1, 1, 1);
-
-    scene.debugLayer.show({ showExplorer: true, embedMode: true });
-    
-    var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
-    light.intensity = 1;
-
-    // var light2 = new BABYLON.DirectionalLight("light2", new BABYLON.Vector3(-1, -1, -1), scene);
-    // light2.position = new BABYLON.Vector3(0, 128, 0);
-    // light2.intensity = 0.7;
-
-    // var myMaterial = new BABYLON.StandardMaterial("myMaterial", scene);
-
-
-    //let groundMaterial = createGroundMaterial(scene);
-    //var ground = createGround(scene, groundMaterial);
-
-    var size = 128;
-    var groundMaxHeight = 2;
-
-
-    var ambient = new BABYLON.HemisphericLight("ambient", new BABYLON.Vector3( 0.0, 1.0, 0.0), scene);
-    ambient.diffuse  = new BABYLON.Color3(0.4, 0.4, 0.4); 
+var createAmbient = function (scene) {
+    var ambient = new BABYLON.HemisphericLight("ambient", new BABYLON.Vector3(0.0, 1.0, 0.0), scene);
+    ambient.diffuse = new BABYLON.Color3(0.4, 0.4, 0.4);
     ambient.specular = new BABYLON.Color3(0.0, 0.0, 0.0);
-    
-    var sun = new BABYLON.DirectionalLight("sun", new BABYLON.Vector3( -1.0, -1.0, 1.0), scene);
-    sun.diffuse = new BABYLON.Color3( 1.0, 1.0, 1.0);
-    sun.specular = new BABYLON.Color3( 1.0, 1.0, 1.0);
+    return ambient;
+}
 
-    var skybox = BABYLON.Mesh.CreateBox("skyBox", size, scene);
+var createLight = function (scene) {
+    var light = new BABYLON.DirectionalLight("sun", new BABYLON.Vector3(-1.0, -1.0, -1.0), scene);
+    light.diffuse = new BABYLON.Color3(1.0, 1.0, 1.0);
+    light.specular = new BABYLON.Color3(1.0, 1.0, 1.0);
+    return light;
+}
+
+var createSkyBox = function (fileDir, colorGradeDir, scene, size) {
+    var skybox = BABYLON.Mesh.CreateBox("skybox", size, scene);
     skybox.material = new BABYLON.StandardMaterial("skyBox", scene);
     skybox.material.backFaceCulling = false;
-    skybox.material.reflectionTexture = new BABYLON.CubeTexture("./textures/cubeTextures/sky/sky", scene);
+    skybox.material.reflectionTexture = new BABYLON.CubeTexture(fileDir, scene);
     skybox.material.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
     skybox.material.diffuseColor = new BABYLON.Color3(0.0, 0.0, 0.0);
-    //skybox.material.specularColor = new BABYLON.Color3(0.0, 0, 0);
-	
-    
-    
-    
-    
-    // var ground = BABYLON.Mesh.CreateGroundFromHeightMap("ground", "./textures/heightMaps/map1.jpg", 128, 128, 250, 0, 300, scene);
-    var ground = BABYLON.Mesh.CreateGroundFromHeightMap("ground", "./ground/ground_heightMap.png", size, size, 250, 0, groundMaxHeight, scene);
-    ground.position.y= -15;
-    ground.material = new BABYLON.StandardMaterial("terrain1", scene);
-    ground.material.diffuseTexture = new BABYLON.Texture("./textures/terrain_1.jpg", scene);
-    ground.material.diffuseTexture.uScale = 50.0;
-    ground.material.diffuseTexture.vScale = 50.0;
-    ground.material.bumpTexture = new BABYLON.Texture("./textures/bumpTextures/bump_rock.jpg", scene);
-    ground.material.bumpTexture.uScale = 10.0;
-    ground.material.bumpTexture.vScale = 10.0;
+    skybox.material.specularColor = new BABYLON.Color3(0.0, 0.0, 0.0);
+    skybox.material.cameraColorGradingTexture = new BABYLON.ColorGradingTexture(colorGradeDir, scene);
+    skybox.material.cameraColorGradingTexture.level = 0.5;
+    skybox.material.cameraColorGradingEnabled = true;
+    skybox.freezeWorldMatrix();
+    return skybox;
+}
+
+var createGround = function (scene, coordY, material, diffTextDir, diffUV, bumpTextDir, bumpUV, size, subDivisions, height, heightMapDir) {
+    var ground = BABYLON.Mesh.CreateGroundFromHeightMap("ground", heightMapDir, size, size, subDivisions, 0, height, scene);
+    ground.position.y = coordY;
+    ground.material = new BABYLON.StandardMaterial(material, scene);
+    ground.material.diffuseTexture = new BABYLON.Texture(diffTextDir, scene);
+    ground.material.diffuseTexture.uScale = diffUV;
+    ground.material.diffuseTexture.vScale = diffUV;
+    ground.material.bumpTexture = new BABYLON.Texture(bumpTextDir, scene);
+    ground.material.bumpTexture.uScale = bumpUV;
+    ground.material.bumpTexture.vScale = bumpUV;
     ground.checkCollisions = true;
     ground.isPickable = true;
     ground.freezeWorldMatrix();
-
-    /*
-    var ground2 = BABYLON.Mesh.CreateGroundFromHeightMap("ground2", "./textures/heightMaps/map2.jpg", 128, 128, 250, 0, 50, scene);
-    ground2.position.y= -5;
-    ground2.material = new BABYLON.StandardMaterial("terrain2", scene);
-    ground2.material.diffuseTexture = new BABYLON.Texture("./textures/terrain_2.jpg", scene);
-    ground2.material.bumpTexture = new BABYLON.Texture("./textures/bumpTextures/bump_land.png", scene);
-    ground2.material.bumpTexture.uScale = 5.0;
-    ground2.material.bumpTexture.vScale = 5.0;
-    ground2.checkCollisions = true;
-    ground2.isPickable = true;
-    ground2.freezeWorldMatrix();
-    */
-    /*
-    var sea = BABYLON.Mesh.CreateGround("sea", size, size, 16, scene);
-    sea.position.y = -14;
-    sea.material = new BABYLON.WaterMaterial("water_material", scene);
-
-    sea.material.bumpTexture = new BABYLON.Texture("./textures/bumpTextures/bump_water.png", scene); // Set the bump texture
-    
-    sea.material.windForce = 45; // Represents the wind force applied on the water surface
-    sea.material.waveHeight = 0.01; // Represents the height of the waves
-    sea.material.bumpHeight = 2.3; // According to the bump map, represents the pertubation of reflection and refraction
-    sea.material.windDirection = new BABYLON.Vector2(-1.0, 0.0); // The wind direction on the water surface (on width and height)
-    sea.material.waterColor = new BABYLON.Color3(0.1, 0.1, 0.6); // Represents the water color mixed with the reflected and refracted world
-    sea.material.colorBlendFactor = 0.0; // Factor to determine how the water color is blended with the reflected and refracted world
-    sea.material.waveLength = 0.05; // The lenght of waves. With smaller values, more waves are generated 
-    
-    sea.material.addToRenderList(skybox);
-    sea.material.addToRenderList(ground);
-    sea.material.addToRenderList(ground2);
-    */
-    loadPlayer(scene, engine, canvas, 0, groundMaxHeight + 40, 12); // notice that y is height
-    loadNPC(scene, engine, canvas, 0, groundMaxHeight + 30, 15);
-    
-
-    window.addEventListener("resize", function () {
-            engine.resize();
-    });
-    document.getElementById("fps").innerHTML = "FPS: " + engine.getFps().toFixed() + " fps";
-    document.getElementById("meshes").innerHTML = "Meshes: " + scene.meshes.length;
-
+    return ground;
 }
 
+var currentControl, playerControl, demoNPCControl;
+var allController = [];
+var autoCommand = [];
 
-
-var cc, cc1, cc2;
 
 
 
 function loadPlayer(scene, engine, canvas, x, y, z) {
     BABYLON.SceneLoader.ImportMesh("", "player/", "Vincent-frontFacing.babylon", scene, function (meshes, particleSystems, skeletons) {
-            var player = meshes[0];
-            var skeleton = skeletons[0];
-            player.skeleton = skeleton;
+        var player = meshes[0];
+        var skeleton = skeletons[0];
+        player.skeleton = skeleton;
 
-            skeleton.enableBlending(0.1);
-            //if the skeleton does not have any animation ranges then set them as below
-            // setAnimationRanges(skeleton);
+        skeleton.enableBlending(0.1);
+        // if the skeleton does not have any animation ranges then set them as below
+        // setAnimationRanges(skeleton);
 
-            var sm = player.material;
-            if (sm.diffuseTexture != null) {
-                    sm.backFaceCulling = true;
-                    sm.ambientColor = new BABYLON.Color3(1, 1, 1);
-            }
+        var sm = player.material;
+        if (sm.diffuseTexture != null) {
+            sm.backFaceCulling = true;
+            sm.ambientColor = new BABYLON.Color3(1, 1, 1);
+        }
 
-            player.position = new BABYLON.Vector3(x, y, z);
-            player.checkCollisions = true;
-            player.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
-            player.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
+        player.position = new BABYLON.Vector3(x, y, z);
+        player.checkCollisions = true;
+        player.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+        player.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
 
-            //rotate the camera behind the player
-            //player.rotation.y = Math.PI / 4;
-            //var alpha = -(Math.PI / 2 + player.rotation.y);
-            var alpha = 0;
-            var beta = Math.PI / 2.5;
-            var target = new BABYLON.Vector3(player.position.x, player.position.y + 1.5, player.position.z);
+        // rotate the camera behind the player
+        // player.rotation.y = Math.PI / 4;
+        // var alpha = -(Math.PI / 2 + player.rotation.y);
+        var alpha = 0;
+        var beta = Math.PI / 2.5;
+        var target = new BABYLON.Vector3(player.position.x, player.position.y + 1.5, player.position.z);
 
-            var camera = new BABYLON.ArcRotateCamera("ArcRotateCamera", alpha, beta, 5, target, scene);
+        var camera = new BABYLON.ArcRotateCamera("ArcRotateCamera", alpha, beta, 5, target, scene);
 
-            //standard camera setting
-            camera.wheelPrecision = 15;
-            camera.checkCollisions = true;
-            //make sure the keyboard keys controlling camera are different from those controlling player
-            //here we will not use any keyboard keys to control camera
-            camera.keysLeft = [];
-            camera.keysRight = [];
-            camera.keysUp = [];
-            camera.keysDown = [];
-            //how close can the camera come to player
-            camera.lowerRadiusLimit = 2;
-            //how far can the camera go from the player
-            camera.upperRadiusLimit = 200;
+        // standard camera setting
+        camera.wheelPrecision = 15;
+        camera.checkCollisions = true;
+        // make sure the keyboard keys controlling camera are different from those controlling player
+        // here we will not use any keyboard keys to control camera
+        camera.keysLeft = [];
+        camera.keysRight = [];
+        camera.keysUp = [];
+        camera.keysDown = [];
+        // how close can the camera come to player
+        camera.lowerRadiusLimit = 2;
+        // how far can the camera go from the player
+        camera.upperRadiusLimit = 200;
 
-            camera.attachControl();
+        camera.attachControl();
 
-            cc1 = new CharacterController(player, camera, scene);
-            cc1.setFaceForward(true);
-            cc1.setMode(0);
-            cc1.setTurnSpeed(45);
-            //below makes the controller point the camera at the player head which is approx
-            //1.5m above the player origin
-            cc1.setCameraTarget(new BABYLON.Vector3(0, 1.5, 0));
+        var control = new CharacterController(player, camera, scene);
+        control.setFaceForward(true);
+        control.setMode(0);
+        control.setTurnSpeed(45);
+        // below makes the controller point the camera at the player head which is approx
+        // 1.5m above the player origin
+        control.setCameraTarget(new BABYLON.Vector3(0, 1.5, 0));
 
-            //if the camera comes close to the player we want to enter first person mode.
-            cc1.setNoFirstPerson(false);
-            //the height of steps which the player can climb
-            cc1.setStepOffset(0.4);
-            //the minimum and maximum slope the player can go up
-            //between the two the player will start sliding down if it stops
-            cc1.setSlopeLimit(30, 60);
+        // if the camera comes close to the player we want to enter first person mode.
+        control.setNoFirstPerson(false);
+        // the height of steps which the player can climb
+        control.setStepOffset(0.4);
+        // the minimum and maximum slope the player can go up
+        // between the two the player will start sliding down if it stops
+        control.setSlopeLimit(30, 60);
 
-            //tell controller
-            // - which animation range should be used for which player animation
-            // - rate at which to play that animation range
-            // - wether the animation range should be looped
-            //use this if name, rate or looping is different from default
-            cc1.setIdleAnim("idle", 1, true);
-            cc1.setTurnLeftAnim("turnLeft", 0.5, true);
-            cc1.setTurnRightAnim("turnRight", 0.5, true);
-            cc1.setWalkBackAnim("walkBack", 0.5, true);
-            cc1.setIdleJumpAnim("idleJump", 0.5, false);
-            cc1.setRunJumpAnim("runJump", 0.6, false);
-            cc1.setFallAnim("fall", 2, false);
-            cc1.setSlideBackAnim("slideBack", 1, false);
+        // tell controller
+        // - which animation range should be used for which player animation
+        // - rate at which to play that animation range
+        // - wether the animation range should be looped
+        //use this if name, rate or looping is different from default
+        control.setIdleAnim("idle", 1, true);
+        control.setTurnLeftAnim("turnLeft", 0.5, true);
+        control.setTurnRightAnim("turnRight", 0.5, true);
+        control.setWalkBackAnim("walkBack", 0.5, true);
+        control.setIdleJumpAnim("idleJump", 0.5, false);
+        control.setRunJumpAnim("runJump", 0.6, false);
+        control.setFallAnim("fall", 2, false);
+        control.setSlideBackAnim("slideBack", 1, false);
 
-            let walkSound = new BABYLON.Sound(
-                    "walk",
-                    "./sounds/footstep_carpet_000.ogg",
-                    scene,
-                    () => {
-                            cc1.setSound(walkSound);
-                    },
-                    { loop: false }
-            );
-
-            var ua = window.navigator.userAgent;
-            var isIE = /MSIE|Trident/.test(ua);
-            if (isIE) {
-                    //IE specific code goes here
-                    cc1.setJumpKey("spacebar");
-            }
-
-            cc1.setCameraElasticity(true);
-            cc1.makeObstructionInvisible(true);
-            cc1.start();
-
-            engine.runRenderLoop(function () {
-                    scene.render();
-            });
-
-            cmds = [cc1.walk, cc1.walkBack, cc1.run, cc1.jump, cc1.turnLeft, cc1.turnRight, cc1.strafeLeft, cc1.strafeRight];
-            cc = cc1;
-
-            setControls();
-            showControls();
-            canvas.focus();
-
-            // loadNPC(scene, engine, canvas);
-    });
-}
-
-
-function loadNPC(scene, engine, canvas, x, y, z) {
-    BABYLON.SceneLoader.ImportMesh("", "player/", "starterAvatars.babylon", scene, function (meshes, particleSystems, skeletons) {
-            var player = meshes[0];
-            var skeleton = skeletons[0];
-            player.skeleton = skeleton;
-
-            skeleton.enableBlending(0.1);
-            //if the skeleton does not have any animation ranges then set them as below
-            // setAnimationRanges(skeleton);
-
-            var sm = player.material;
-            if (sm.diffuseTexture != null) {
-                    sm.backFaceCulling = true;
-                    sm.ambientColor = new BABYLON.Color3(1, 1, 1);
-            }
-
-
-            player.position = new BABYLON.Vector3(x, y, z);
-            player.checkCollisions = true;
-            player.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
-            player.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
-
-
-            cc2 = new CharacterController(player, null, scene);
-            cc2.setFaceForward(false);
-            cc2.setMode(0);
-            cc2.setTurnSpeed(45);
-
-            //the height of steps which the player can climb
-            cc2.setStepOffset(0.4);
-            //the minimum and maximum slope the player can go up
-            //between the two the player will start sliding down if it stops
-            cc2.setSlopeLimit(30, 60);
-
-            //tell controller
-            // - which animation range should be used for which player animation
-            // - rate at which to play that animation range
-            // - wether the animation range should be looped
-            //use this if name, rate or looping is different from default
-            cc2.setIdleAnim("idle", 1, true);
-            cc2.setTurnLeftAnim("turnLeft", 0.5, true);
-            cc2.setTurnRightAnim("turnRight", 0.5, true);
-            cc2.setWalkBackAnim("walkBack", 0.5, true);
-            cc2.setIdleJumpAnim("idleJump", 0.5, false);
-            cc2.setRunJumpAnim("runJump", 0.6, false);
-            cc2.setFallAnim("fall", 2, false);
-            cc2.setSlideBackAnim("slideBack", 1, false);
-
-            let walkSound = new BABYLON.Sound(
-                    "walk",
-                    "./sounds/footstep_carpet_000.ogg",
-                    scene,
-                    () => {
-                            cc2.setSound(walkSound);
-                    },
-                    { loop: false }
-            );
-
-            var ua = window.navigator.userAgent;
-            var isIE = /MSIE|Trident/.test(ua);
-            if (isIE) {
-                    //IE specific code goes here
-                    cc2.setJumpKey("spacebar");
-            }
-
-            cc2.enableKeyBoard(false);
-            cc2.start();
-    });
-}
-
-//this is how you might set the animation ranges for a skeleton
-function setAnimationRanges(skel) {
-    delAnimRanges(skel);
-
-    skel.createAnimationRange("fall", 0, 16);
-    skel.createAnimationRange("idle", 21, 65);
-    skel.createAnimationRange("jump", 70, 94);
-    skel.createAnimationRange("run", 100, 121);
-    skel.createAnimationRange("slideBack", 125, 129);
-    skel.createAnimationRange("strafeLeft", 135, 179);
-    skel.createAnimationRange("strafeRight", 185, 229);
-    skel.createAnimationRange("turnLeft", 240, 262);
-    skel.createAnimationRange("turnRight", 270, 292);
-    skel.createAnimationRange("walk", 300, 335);
-    skel.createAnimationRange("walkBack", 340, 366);
-}
-/*
-* delete all existing ranges
-* @param {type} skel
-* @returns {undefined}
-*/
-function delAnimRanges(skel) {
-    let ars = skel.getAnimationRanges();
-    let l = ars.length;
-    for (let i = 0; i < l; i++) {
-            let ar = ars[i];
-            console.log(ar.name + "," + ar.from + "," + ar.to);
-            skel.deleteAnimationRange(ar.name, false);
-    }
-}
-
-function createGround(scene, groundMaterial) {
-    BABYLON.MeshBuilder.CreateGroundFromHeightMap(
-            "ground",
-            "ground/ground_heightMap.png",
-            {
-                    width: 128,
-                    height: 128,
-                    minHeight: 0,
-                    maxHeight: 10,
-                    subdivisions: 32,
-                    onReady: function (grnd) {
-                            grnd.material = groundMaterial;
-                            grnd.checkCollisions = true;
-                            grnd.isPickable = true;
-                            grnd.freezeWorldMatrix();
-                    },
+        let walkSound = new BABYLON.Sound(
+            "walk",
+            "./sounds/footstep_carpet_000.ogg",
+            scene,
+            () => {
+                control.setSound(walkSound);
             },
-            scene
-    );
+            { loop: false }
+        );
+
+        var ua = window.navigator.userAgent;
+        var isIE = /MSIE|Trident/.test(ua);
+        if (isIE) {
+            //IE specific code goes here
+            control.setJumpKey("spacebar");
+        }
+
+        control.setCameraElasticity(true);
+        control.makeObstructionInvisible(true);
+        control.start();
+
+        allController.push(control);
+        playerControl = control;
+        autoCommand.push(0);
+
+        // get camera and render
+        engine.runRenderLoop(function () {
+            scene.render();
+        });
+
+        // set cmd
+        cmds = [playerControl.walk, playerControl.walkBack, playerControl.run, playerControl.jump, playerControl.turnLeft, playerControl.turnRight, playerControl.strafeLeft, playerControl.strafeRight];
+        currentControl = playerControl;
+
+        setControls();
+        showControls();
+        canvas.focus();
+    });
 }
 
-function createGroundMaterial(scene) {
-    let groundMaterial = new BABYLON.StandardMaterial("groundMat", scene);
-    groundMaterial.diffuseTexture = new BABYLON.Texture("ground/ground-normal.png", scene);
-    groundMaterial.diffuseTexture.uScale = 4.0;
-    groundMaterial.diffuseTexture.vScale = 4.0;
 
-    groundMaterial.bumpTexture = new BABYLON.Texture("ground/ground-normal.png", scene);
-    groundMaterial.bumpTexture.uScale = 12.0;
-    groundMaterial.bumpTexture.vScale = 12.0;
+function loadNPC(scene, engine, canvas, x, y, z, isDemo, autoMove) {
+    BABYLON.SceneLoader.ImportMesh("", "player/", "starterAvatars.babylon", scene, function (meshes, particleSystems, skeletons) {
+        var player = meshes[0];
+        var skeleton = skeletons[0];
+        player.skeleton = skeleton;
 
-    groundMaterial.diffuseColor = new BABYLON.Color3(0.9, 0.6, 0.4);
-    groundMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
-    return groundMaterial;
+        skeleton.enableBlending(0.1);
+        //if the skeleton does not have any animation ranges then set them as below
+        // setAnimationRanges(skeleton);
+
+        var sm = player.material;
+        if (sm.diffuseTexture != null) {
+            sm.backFaceCulling = true;
+            sm.ambientColor = new BABYLON.Color3(1, 1, 1);
+        }
+
+
+        player.position = new BABYLON.Vector3(x, y, z);
+        player.checkCollisions = true;
+        player.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+        player.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
+
+
+        var control = new CharacterController(player, null, scene);
+        control.setFaceForward(false);
+        control.setMode(0);
+        control.setTurnSpeed(45);
+
+        //the height of steps which the player can climb
+        control.setStepOffset(0.4);
+        //the minimum and maximum slope the player can go up
+        //between the two the player will start sliding down if it stops
+        control.setSlopeLimit(30, 60);
+
+        //tell controller
+        // - which animation range should be used for which player animation
+        // - rate at which to play that animation range
+        // - wether the animation range should be looped
+        //use this if name, rate or looping is different from default
+        control.setIdleAnim("idle", 1, true);
+        control.setTurnLeftAnim("turnLeft", 0.5, true);
+        control.setTurnRightAnim("turnRight", 0.5, true);
+        control.setWalkBackAnim("walkBack", 0.5, true);
+        control.setIdleJumpAnim("idleJump", 0.5, false);
+        control.setRunJumpAnim("runJump", 0.6, false);
+        control.setFallAnim("fall", 2, false);
+        control.setSlideBackAnim("slideBack", 1, false);
+
+        let walkSound = new BABYLON.Sound(
+            "walk",
+            "./sounds/footstep_carpet_000.ogg",
+            scene,
+            () => {
+                control.setSound(walkSound);
+            },
+            { loop: false }
+        );
+
+        var ua = window.navigator.userAgent;
+        var isIE = /MSIE|Trident/.test(ua);
+        if (isIE) {
+            //IE specific code goes here
+            control.setJumpKey("spacebar");
+        }
+
+        control.enableKeyBoard(false);
+        control.start();
+        allController.push(control);
+        if (isDemo) {
+            demoNPCControl = control;
+            autoCommand.push(0);
+        }
+        else {
+            autoCommand.push(autoMove);
+        }
+    });
 }
-
-var showHelp = function () {
-    var el = document.getElementById("overlay");
-    el.style.visibility = el.style.visibility == "visible" ? "hidden" : "visible";
-    canvas.focus();
-};
-
 function showControls() {
-    var el = document.getElementById("controls");
-    el.style.visibility = "visible";
+    document.getElementById("controls").style.visibility = "visible";
 }
 
 
@@ -410,16 +303,14 @@ function toggleClass(e) {
 
 function setUIValues() {
 
-    document.getElementById("tp").checked = cc.getMode() == 0 ? true : false;
-    document.getElementById("td").checked = cc.getMode() == 1 ? true : false;
-    document.getElementById("toff").checked = cc.isTurningOff();
-    document.getElementById("kb").checked = cc.isKeyBoardEnabled();
+    document.getElementById("tp").checked = currentControl.getMode() == 0 ? true : false;
+    document.getElementById("td").checked = currentControl.getMode() == 1 ? true : false;
+    document.getElementById("toff").checked = currentControl.isTurningOff();
+    document.getElementById("kb").checked = currentControl.isKeyBoardEnabled();
 
     //for npc third person mode is always disabled.
-    document.getElementById("tp").disabled = (cc == cc2);
-    document.getElementById("toff").disabled = (cc == cc2);
-
-    
+    document.getElementById("tp").disabled = (currentControl == demoNPCControl);
+    document.getElementById("toff").disabled = (currentControl == demoNPCControl);
 }
 
 
@@ -430,7 +321,7 @@ function setControls() {
 
     //init style
     for (i = 0; i < x.length; i++) {
-            x[i].className = "w3-btn w3-border w3-round w3-pale-red";
+        x[i].className = "w3-btn w3-border w3-round w3-pale-red";
     }
     //init values
     setUIValues();
@@ -438,107 +329,225 @@ function setControls() {
 
     //click handlers
     document.getElementById("pl").onclick = function (e) {
-            canvas.requestPointerLock = canvas.requestPointerLock || canvas.msRequestPointerLock || canvas.mozRequestPointerLock || canvas.webkitRequestPointerLock || false;
-            if (canvas.requestPointerLock) {
-                    canvas.requestPointerLock();
-            }
-            canvas.focus();
+        canvas.requestPointerLock = canvas.requestPointerLock || canvas.msRequestPointerLock || canvas.mozRequestPointerLock || canvas.webkitRequestPointerLock || false;
+        if (canvas.requestPointerLock) {
+            canvas.requestPointerLock();
+        }
+        canvas.focus();
     };
 
     //click handlers
     document.getElementById("pc").onclick = function (e) {
-            cc = cc1;
-            setUIValues();
-            canvas.focus();
+        currentControl = playerControl;
+        setUIValues();
+        canvas.focus();
     };
 
     document.getElementById("npc").onclick = function (e) {
-            cc = cc2;
-            setUIValues();
-            canvas.focus();
+        currentControl = demoNPCControl;
+        setUIValues();
+        canvas.focus();
     };
 
     document.getElementById("w").onclick = function (e) {
-            cc.walk((w = !w));
-            toggleClass(e);
+        currentControl.walk((w = !w));
+        toggleClass(e);
     };
     document.getElementById("wb").onclick = function (e) {
-            cc.walkBack((wb = !wb));
-            toggleClass(e);
+        currentControl.walkBack((wb = !wb));
+        toggleClass(e);
     };
     document.getElementById("wbf").onclick = function (e) {
-            cc.walkBackFast((wbf = !wbf));
-            toggleClass(e);
+        currentControl.walkBackFast((wbf = !wbf));
+        toggleClass(e);
     };
     document.getElementById("r").onclick = function (e) {
-            cc.run((r = !r));
-            toggleClass(e);
+        currentControl.run((r = !r));
+        toggleClass(e);
     };
     document.getElementById("j").onclick = function (e) {
-            cc.jump();
-            canvas.focus();
+        currentControl.jump();
+        canvas.focus();
     };
     document.getElementById("tl").onclick = function (e) {
-            cc.turnLeft((tl = !tl));
-            toggleClass(e);
+        currentControl.turnLeft((tl = !tl));
+        toggleClass(e);
     };
     document.getElementById("tlf").onclick = function (e) {
-            cc.turnLeftFast((tlf = !tlf));
-            toggleClass(e);
+        currentControl.turnLeftFast((tlf = !tlf));
+        toggleClass(e);
     };
     document.getElementById("tr").onclick = function (e) {
-            cc.turnRight((tr = !tr));
-            toggleClass(e);
+        currentControl.turnRight((tr = !tr));
+        toggleClass(e);
     };
     document.getElementById("trf").onclick = function (e) {
-            cc.turnRightFast((trf = !trf));
-            toggleClass(e);
+        currentControl.turnRightFast((trf = !trf));
+        toggleClass(e);
     };
     document.getElementById("sl").onclick = function (e) {
-            cc.strafeLeft((sl = !sl));
-            toggleClass(e);
+        currentControl.strafeLeft((sl = !sl));
+        toggleClass(e);
     };
     document.getElementById("slf").onclick = function (e) {
-            cc.strafeLeftFast((slf = !slf));
-            toggleClass(e);
+        currentControl.strafeLeftFast((slf = !slf));
+        toggleClass(e);
     };
     document.getElementById("sr").onclick = function (e) {
-            cc.strafeRight((sr = !sr));
-            toggleClass(e);
+        currentControl.strafeRight((sr = !sr));
+        toggleClass(e);
     };
     document.getElementById("srf").onclick = function (e) {
-            cc.strafeRightFast((srf = !srf));
-            toggleClass(e);
+        currentControl.strafeRightFast((srf = !srf));
+        toggleClass(e);
     };
 
     document.getElementById("tp").onclick = function (e) {
-            cc.setMode(0);
-            canvas.focus();
+        currentControl.setMode(0);
+        canvas.focus();
     };
     document.getElementById("td").onclick = function (e) {
-            cc.setMode(1);
-            canvas.focus();
+        currentControl.setMode(1);
+        canvas.focus();
     };
     document.getElementById("toff").onclick = function (e) {
-            cc.setTurningOff(e.target.checked);
-            canvas.focus();
+        currentControl.setTurningOff(e.target.checked);
+        canvas.focus();
     };
     document.getElementById("kb").onclick = function (e) {
-            cc.enableKeyBoard(e.target.checked);
-            canvas.focus();
+        currentControl.enableKeyBoard(e.target.checked);
+        canvas.focus();
     };
-    // document.getElementById("help").onclick = showHelp;
-    document.getElementById("closehelp").onclick = showHelp;
-
-    let animPaused = false;
-    document.getElementById("help").onclick = (e) => {
-            if (animPaused) {
-                    cc.resumeAnim();
-            } else {
-                    cc.pauseAnim();
-            }
-            animPaused = !animPaused;
-    };
-
-    
 }
+
+
+
+
+var createScene = function () {
+    var scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color3(0.75, 0.75, 0.75);
+    scene.ambientColor = new BABYLON.Color3(1, 1, 1);
+
+    // debugger
+    scene.debugLayer.show({ showExplorer: true, embedMode: true });
+
+
+
+
+    // engine & scene instrumentation
+    var engineInstrumentation = new BABYLON.EngineInstrumentation(engine);
+    engineInstrumentation.captureGPUFrameTime = true;
+    engineInstrumentation.captureShaderCompilationTime = true;
+    var sceneInstrumentation = new BABYLON.SceneInstrumentation(scene);
+    sceneInstrumentation.captureFrameTime = true;
+
+
+
+    var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
+    light.intensity = 1;
+
+
+    var ambient = createAmbient(scene);
+    var sun = createLight(scene);
+
+    var size = 128;
+    var height = 0;
+
+    var skybox = createSkyBox("./textures/skyBoxSnowMountain/skybox4", "./textures/LateSunset.3dl", scene, size);
+
+    var ground = createGround(scene, -15, "terrain1", "./textures/ice+and+snow+ground-4096x4096.png", 50.0,
+        "./textures/bumpTextures/bump_rock.jpg", 10.0, size, 250, height, "./ground/ground_heightMap.png");
+
+
+
+    // only for debug while coding
+    /*
+    var camera = new BABYLON.ArcRotateCamera("Camera", 0, 0, 10, BABYLON.Vector3.Zero(), scene);
+    camera.setPosition(new BABYLON.Vector3(-15, 3, 0));
+    camera.attachControl(canvas, true);
+    */
+    loadPlayer(scene, engine, canvas, 0, height + 30, 12); // notice that y is height
+    loadNPC(scene, engine, canvas, 0, height + 30, 17, true, 0);
+    loadNPC(scene, engine, canvas, 0, height + 30, 7, false, 2);
+    loadNPC(scene, engine, canvas, 5, height + 30, 9, false, 3);
+    loadNPC(scene, engine, canvas, 15, height + 30, 16, false, 4);
+    loadNPC(scene, engine, canvas, 20, height + 30, 20, false, 5);
+    loadNPC(scene, engine, canvas, 30, height + 30, 25, false, 6);
+    loadNPC(scene, engine, canvas, 5, height + 30, 25, false, 7);
+    loadNPC(scene, engine, canvas, 0, height + 30, 25, false, 8);
+    //allController[2].run(true);
+    //allController[2].turnRightFast(true);
+
+
+    scene.registerBeforeRender(function () {
+        // light
+        skybox.material.cameraColorGradingTexture.level = Math.sin(timeStamp / 120.0) * 0.5 + 0.5;
+        timeStamp += 1.0;
+        /*
+        if (timeStamp == 1000.0) {   
+            if (!allController[2].anyMovement()) {
+                allController[2].run(true);
+                allController[2].turnRightFast(true);
+            }
+            if (!allController[3].anyMovement()) {
+                allController[3].run(true);
+                allController[3].turnLeftFast(true);
+            }
+            if (!allController[4].anyMovement()) {
+                allController[4].walk(true);
+                allController[4].turnRightFast(true);
+            }
+            if (!allController[5].anyMovement()) {
+                allController[5].walk(true);
+                allController[5].turnLeftFast(true);
+            }
+            if (!allController[6].anyMovement()) {
+                allController[6].turnRightFast(true);
+            }
+            if (!allController[7].anyMovement()) {
+                allController[7].turnLeftFast(true);
+            }
+        }
+        */
+        if (timeStamp >= 1000.0) {
+            if (!allController[8].anyMovement()) {
+                allController[8].jump();
+            }
+        }
+
+        // debugger information on HTML
+        document.getElementById("fps").innerHTML = "FPS: " + engine.getFps().toFixed() + " fps";
+        document.getElementById("absolute-fps").innerHTML = "absolute FPS: " + (1000.0 / sceneInstrumentation.frameTimeCounter.lastSecAverage).toFixed() + " fps";
+        document.getElementById("shader-count").innerHTML = "compiler shaders count : " + engineInstrumentation.shaderCompilationTimeCounter.count;
+        document.getElementById("meshes").innerHTML = "Meshes: " + scene.meshes.length;
+        document.getElementById("total-character").innerHTML = "Character : " + allController.length;
+        document.getElementById("any-movement").innerHTML = "Player any movement : " + currentControl.anyMovement();
+    });
+
+    return scene;
+}
+
+
+window.initFunction = async function () {
+    var asyncEngineCreation = async function () {
+        try {
+            return createDefaultEngine();
+        } catch (e) {
+            console.log("the available createEngine function failed. Creating the default engine instead");
+            return createDefaultEngine();
+        }
+    }
+
+    window.engine = await asyncEngineCreation();
+    if (!engine) throw 'engine should not be null.';
+    startRenderLoop(engine, canvas);
+    window.scene = createScene();
+};
+initFunction().then(() => {
+    sceneToRender = scene
+});
+
+// Resize
+window.addEventListener("resize", function () {
+    engine.resize();
+});
