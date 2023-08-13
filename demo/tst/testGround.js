@@ -1,3 +1,9 @@
+// unfinished and check extension settings of live server
+// https://playground.babylonjs.com/#STWVDD#9
+// https://doc.babylonjs.com/features/featuresDeepDive/importers/loadingFileTypes
+// https://doc.babylonjs.com/features/featuresDeepDive/mesh/copies/sps_as_clone
+
+
 var canvas = document.getElementById("renderCanvas");
 
 var startRenderLoop = function (engine, canvas) {
@@ -20,8 +26,9 @@ var sceneToRender = null;
 // WebGPU1
 var createDefaultEngine = async function () {
     var engine = new BABYLON.WebGPUEngine(canvas);
-    // non compatibility mode for webGPU 
-    engine.compatibilityMode = false;
+    // todo : non compatibility mode for webGPU 
+    // cannot use in async scene
+    // engine.compatibilityMode = false;
 
     // todo : snapshot rendering optimization for webGPU
     // engine.snapshotRenderingMode = BABYLON.Constants.SNAPSHOTRENDERING_FAST (or BABYLON.Constants.SNAPSHOTRENDERING_STANDARD);
@@ -79,56 +86,132 @@ var currentControl, playerControl, demoNPCControl;
 var allController = [];
 var autoCommand = [];
 
+var playerMesh, npcMesh;
+
+function setPlayerPosition(x, y, z) {
+    playerMesh.position = new BABYLON.Vector3(x, y, z);
+    playerMesh.checkCollisions = true;
+    playerMesh.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+    playerMesh.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
+}
+
+var createPlayerCamera = function() {
+    // rotate the camera behind the player
+    // player.rotation.y = Math.PI / 4;
+    // var alpha = -(Math.PI / 2 + player.rotation.y);
+    var alpha = 0;
+    var beta = Math.PI / 2.5;
+    var target = new BABYLON.Vector3(playerMesh.position.x, playerMesh.position.y + 1.5, playerMesh.position.z);
+    var camera = new BABYLON.ArcRotateCamera("ArcRotateCamera", alpha, beta, 5, target, scene);
+
+    // standard camera setting
+    camera.wheelPrecision = 15;
+    camera.checkCollisions = true;
+    // make sure the keyboard keys controlling camera are different from those controlling player
+    // here we will not use any keyboard keys to control camera
+    camera.keysLeft = [];
+    camera.keysRight = [];
+    camera.keysUp = [];
+    camera.keysDown = [];
+    // how close can the camera come to player
+    camera.lowerRadiusLimit = 2;
+    // how far can the camera go from the player
+    camera.upperRadiusLimit = 200;
+
+    camera.attachControl();
+
+    return camera;
+}
+
+var createControl = function (mesh, camera, scene) {
+    var control = new CharacterController(mesh, camera, scene);
+    control.setFaceForward(true);
+    control.setMode(0);
+    control.setTurnSpeed(45);
+    // below makes the controller point the camera at the player head which is approx
+    // 1.5m above the player origin
+    control.setCameraTarget(new BABYLON.Vector3(0, 1.5, 0));
+
+    // if the camera comes close to the player we want to enter first person mode.
+    control.setNoFirstPerson(false);
+    // the height of steps which the player can climb
+    control.setStepOffset(0.4);
+    // the minimum and maximum slope the player can go up
+    // between the two the player will start sliding down if it stops
+    control.setSlopeLimit(30, 60);
+
+    // tell controller
+    // - which animation range should be used for which player animation
+    // - rate at which to play that animation range
+    // - wether the animation range should be looped
+    //use this if name, rate or looping is different from default
+    control.setIdleAnim("idle", 1, true);
+    control.setTurnLeftAnim("turnLeft", 0.5, true);
+    control.setTurnRightAnim("turnRight", 0.5, true);
+    control.setWalkBackAnim("walkBack", 0.5, true);
+    control.setIdleJumpAnim("idleJump", 0.5, false);
+    control.setRunJumpAnim("runJump", 0.6, false);
+    control.setFallAnim("fall", 2, false);
+    control.setSlideBackAnim("slideBack", 1, false);
+
+    let walkSound = new BABYLON.Sound(
+        "walk",
+        "./sounds/footstep_carpet_000.ogg",
+        scene,
+        () => {
+            control.setSound(walkSound);
+        },
+        { loop: false }
+    );
+
+    var ua = window.navigator.userAgent;
+    var isIE = /MSIE|Trident/.test(ua);
+    if (isIE) {
+        //IE specific code goes here
+        control.setJumpKey("spacebar");
+    }
+
+    control.setCameraElasticity(true);
+    control.makeObstructionInvisible(true);
+    control.start();
+    return control;
+}
+
+var createAutoNPCMesh = function(x, y, z) {
+    var npc = npcMesh.clone();
+    npc.skeleton = npcMesh.skeleton.clone();
+    npc.position = new BABYLON.Vector3(x, y, z);
+    npc.checkCollisions = true;
+    npc.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+    npc.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
+    return npc;
+}
+
 
 
 
 function loadPlayer(scene, engine, canvas, x, y, z) {
     BABYLON.SceneLoader.ImportMesh("", "player/", "Vincent-frontFacing.babylon", scene, function (meshes, particleSystems, skeletons) {
-        var player = meshes[0];
-        var skeleton = skeletons[0];
-        player.skeleton = skeleton;
+        playerMesh = meshes[0];
+        
+        playerMesh.skeleton = skeleton[0];
 
-        skeleton.enableBlending(0.1);
+        playerMesh.skeleton.enableBlending(0.1);
         // if the skeleton does not have any animation ranges then set them as below
         // setAnimationRanges(skeleton);
 
-        var sm = player.material;
-        if (sm.diffuseTexture != null) {
-            sm.backFaceCulling = true;
-            sm.ambientColor = new BABYLON.Color3(1, 1, 1);
+        if (playerMesh.material.diffuseTexture != null) {
+            playerMesh.material.backFaceCulling = true;
+            playerMesh.material.ambientColor = new BABYLON.Color3(1, 1, 1);
         }
 
-        player.position = new BABYLON.Vector3(x, y, z);
-        player.checkCollisions = true;
-        player.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
-        player.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
+        
+        
+        
 
-        // rotate the camera behind the player
-        // player.rotation.y = Math.PI / 4;
-        // var alpha = -(Math.PI / 2 + player.rotation.y);
-        var alpha = 0;
-        var beta = Math.PI / 2.5;
-        var target = new BABYLON.Vector3(player.position.x, player.position.y + 1.5, player.position.z);
+        
 
-        var camera = new BABYLON.ArcRotateCamera("ArcRotateCamera", alpha, beta, 5, target, scene);
-
-        // standard camera setting
-        camera.wheelPrecision = 15;
-        camera.checkCollisions = true;
-        // make sure the keyboard keys controlling camera are different from those controlling player
-        // here we will not use any keyboard keys to control camera
-        camera.keysLeft = [];
-        camera.keysRight = [];
-        camera.keysUp = [];
-        camera.keysDown = [];
-        // how close can the camera come to player
-        camera.lowerRadiusLimit = 2;
-        // how far can the camera go from the player
-        camera.upperRadiusLimit = 200;
-
-        camera.attachControl();
-
-        var control = new CharacterController(player, camera, scene);
+        var control = new CharacterController(playerMesh, camera, scene);
         control.setFaceForward(true);
         control.setMode(0);
         control.setTurnSpeed(45);
@@ -199,30 +282,28 @@ function loadPlayer(scene, engine, canvas, x, y, z) {
 }
 
 
-function loadNPC(scene, engine, canvas, x, y, z, isDemo, autoMove) {
+function loadDemoNPC(scene, engine, canvas, x, y, z) {
     BABYLON.SceneLoader.ImportMesh("", "player/", "starterAvatars.babylon", scene, function (meshes, particleSystems, skeletons) {
-        var player = meshes[0];
-        var skeleton = skeletons[0];
-        player.skeleton = skeleton;
+        npcMesh = meshes[0];
+        npcMesh.skeleton = skeletons[0];
 
-        skeleton.enableBlending(0.1);
+        npcMesh.skeleton.enableBlending(0.1);
         //if the skeleton does not have any animation ranges then set them as below
         // setAnimationRanges(skeleton);
 
-        var sm = player.material;
-        if (sm.diffuseTexture != null) {
-            sm.backFaceCulling = true;
-            sm.ambientColor = new BABYLON.Color3(1, 1, 1);
+        if (npcMesh.material.diffuseTexture != null) {
+            npcMesh.material.backFaceCulling = true;
+            npcMesh.material.ambientColor = new BABYLON.Color3(1, 1, 1);
         }
 
 
-        player.position = new BABYLON.Vector3(x, y, z);
-        player.checkCollisions = true;
-        player.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
-        player.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
+        npcMesh.position = new BABYLON.Vector3(x, y, z);
+        npcMesh.checkCollisions = true;
+        npcMesh.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+        npcMesh.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
 
 
-        var control = new CharacterController(player, null, scene);
+        var control = new CharacterController(npcMesh, null, scene);
         control.setFaceForward(false);
         control.setMode(0);
         control.setTurnSpeed(45);
@@ -267,15 +348,86 @@ function loadNPC(scene, engine, canvas, x, y, z, isDemo, autoMove) {
         control.enableKeyBoard(false);
         control.start();
         allController.push(control);
-        if (isDemo) {
-            demoNPCControl = control;
-            autoCommand.push(0);
-        }
-        else {
-            autoCommand.push(autoMove);
-        }
+        
+        demoNPCControl = control;
+        autoCommand.push(0);
     });
 }
+
+function loadAutoNPC(scene, engine, canvas, x, y, z, autoMove) {
+    BABYLON.SceneLoader.ImportMesh("", "player/", "starterAvatars.babylon", scene, function (meshes, particleSystems, skeletons) {
+        npcMesh = meshes[0];
+        npcMesh.skeleton = skeletons[0];
+
+        npcMesh.skeleton.enableBlending(0.1);
+        //if the skeleton does not have any animation ranges then set them as below
+        // setAnimationRanges(skeleton);
+
+        if (npcMesh.material.diffuseTexture != null) {
+            npcMesh.material.backFaceCulling = true;
+            npcMesh.material.ambientColor = new BABYLON.Color3(1, 1, 1);
+        }
+
+
+        npcMesh.position = new BABYLON.Vector3(x, y, z);
+        npcMesh.checkCollisions = true;
+        npcMesh.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+        npcMesh.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
+
+
+        var control = new CharacterController(npcMesh, null, scene);
+        control.setFaceForward(false);
+        control.setMode(0);
+        control.setTurnSpeed(45);
+
+        //the height of steps which the player can climb
+        control.setStepOffset(0.4);
+        //the minimum and maximum slope the player can go up
+        //between the two the player will start sliding down if it stops
+        control.setSlopeLimit(30, 60);
+
+        //tell controller
+        // - which animation range should be used for which player animation
+        // - rate at which to play that animation range
+        // - wether the animation range should be looped
+        //use this if name, rate or looping is different from default
+        control.setIdleAnim("idle", 1, true);
+        control.setTurnLeftAnim("turnLeft", 0.5, true);
+        control.setTurnRightAnim("turnRight", 0.5, true);
+        control.setWalkBackAnim("walkBack", 0.5, true);
+        control.setIdleJumpAnim("idleJump", 0.5, false);
+        control.setRunJumpAnim("runJump", 0.6, false);
+        control.setFallAnim("fall", 2, false);
+        control.setSlideBackAnim("slideBack", 1, false);
+
+        let walkSound = new BABYLON.Sound(
+            "walk",
+            "./sounds/footstep_carpet_000.ogg",
+            scene,
+            () => {
+                control.setSound(walkSound);
+            },
+            { loop: false }
+        );
+
+        var ua = window.navigator.userAgent;
+        var isIE = /MSIE|Trident/.test(ua);
+        if (isIE) {
+            //IE specific code goes here
+            control.setJumpKey("spacebar");
+        }
+
+        control.enableKeyBoard(false);
+        control.start();
+        allController.push(control);
+        
+        demoNPCControl = control;
+        autoCommand.push(0);
+    });
+}
+
+
+
 function showControls() {
     document.getElementById("controls").style.visibility = "visible";
 }
@@ -423,15 +575,13 @@ function setControls() {
 
 
 
-var createScene = function () {
+var createScene = async function () {
     var scene = new BABYLON.Scene(engine);
     scene.clearColor = new BABYLON.Color3(0.75, 0.75, 0.75);
     scene.ambientColor = new BABYLON.Color3(1, 1, 1);
 
     // debugger
     scene.debugLayer.show({ showExplorer: true, embedMode: true });
-
-
 
 
     // engine & scene instrumentation
@@ -458,6 +608,29 @@ var createScene = function () {
     var ground = createGround(scene, -15, "terrain1", "./textures/ice+and+snow+ground-4096x4096.png", 50.0,
         "./textures/bumpTextures/bump_rock.jpg", 10.0, size, 250, height, "./ground/ground_heightMap.png");
 
+    // load player and npc Mesh
+
+    const playerMeshResult = await BABYLON.SceneLoader.ImportMeshAsync("", "player/", "Vincent-frontFacing.babylon", scene);
+    
+    playerMesh = playerMeshResult.meshes[0];
+    playerMesh.skeleton = playerMeshResult.skeletons[0];
+    playerMesh.skeleton.enableBlending(0.1);
+
+    if (playerMesh.material.diffuseTexture != null) {
+        playerMesh.material.backFaceCulling = true;
+        playerMesh.material.ambientColor = new BABYLON.Color3(1, 1, 1);
+    }
+
+    const npcMeshResult = await BABYLON.SceneLoader.ImportMeshAsync("", "player/", "starterAvatars.babylon", scene);
+    npcMesh = npcMeshResult.meshes[0];
+    npcMesh.skeleton = npcMeshResult.skeletons[0];
+    npcMesh.skeleton.enableBlending(0.1);
+
+    if (npcMesh.material.diffuseTexture != null) {
+        npcMesh.material.backFaceCulling = true;
+        npcMesh.material.ambientColor = new BABYLON.Color3(1, 1, 1);
+    }
+
 
 
     // only for debug while coding
@@ -467,14 +640,14 @@ var createScene = function () {
     camera.attachControl(canvas, true);
     */
     loadPlayer(scene, engine, canvas, 0, height + 30, 12); // notice that y is height
-    loadNPC(scene, engine, canvas, 0, height + 30, 17, true, 0);
-    loadNPC(scene, engine, canvas, 0, height + 30, 7, false, 2);
-    loadNPC(scene, engine, canvas, 5, height + 30, 9, false, 3);
-    loadNPC(scene, engine, canvas, 15, height + 30, 16, false, 4);
-    loadNPC(scene, engine, canvas, 20, height + 30, 20, false, 5);
-    loadNPC(scene, engine, canvas, 30, height + 30, 25, false, 6);
-    loadNPC(scene, engine, canvas, 5, height + 30, 25, false, 7);
-    loadNPC(scene, engine, canvas, 0, height + 30, 25, false, 8);
+    loadDemoNPC(scene, engine, canvas, 0, height + 30, 17);
+    loadNPC(scene, engine, canvas, 0, height + 30, 7, 2);
+    loadNPC(scene, engine, canvas, 5, height + 30, 9, 3);
+    loadNPC(scene, engine, canvas, 15, height + 30, 16, 4);
+    loadNPC(scene, engine, canvas, 20, height + 30, 20, 5);
+    loadNPC(scene, engine, canvas, 30, height + 30, 25, 6);
+    loadNPC(scene, engine, canvas, 5, height + 30, 25, 7);
+    loadNPC(scene, engine, canvas, 0, height + 30, 25, 8);
     //allController[2].run(true);
     //allController[2].turnRightFast(true);
 
