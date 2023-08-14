@@ -16,9 +16,9 @@ var sceneToRender = null;
 // engine and etc.
 
 // WebGL2 - Parallel shader compilation
-var createDefaultEngine = function () { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, disableWebGL2Support: false }); };
+// var createDefaultEngine = function () { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, disableWebGL2Support: false }); };
 // WebGPU1
-/*
+
 var createDefaultEngine = async function () {
     var engine = new BABYLON.WebGPUEngine(canvas);
     // todo : non compatibility mode for webGPU 
@@ -31,7 +31,7 @@ var createDefaultEngine = async function () {
     await engine.initAsync();
     return engine;
 }
-*/
+
 var createAmbient = function (scene) {
     var ambient = new BABYLON.HemisphericLight("ambient", new BABYLON.Vector3(0.0, 1.0, 0.0), scene);
     ambient.diffuse = new BABYLON.Color3(0.4, 0.4, 0.4);
@@ -382,7 +382,8 @@ var createScene = async function () {
     var size = 256;
     var height = 10;
     var subDivisionsForGround = 16;
-    var initCharacterDistance = 10;
+    var initCharacterDistance = 5;
+    var initHeightOffset = 5;
 
     var skybox = createSkyBox("./textures/skyBoxSnowMountain/skybox4", "./textures/LateSunset.3dl", scene, size);
 
@@ -409,7 +410,7 @@ var createScene = async function () {
     }
 
     // set Player's position and camera
-    setPlayerPosition(0, height + 30, 0);
+    setPlayerPosition(0, height + initHeightOffset, 0);
     var alpha = 0;
     var beta = Math.PI / 2.5;
     var target = new BABYLON.Vector3(playerMesh.position.x, playerMesh.position.y + 1.5, playerMesh.position.z);
@@ -454,7 +455,7 @@ var createScene = async function () {
         npcMesh.material.backFaceCulling = true;
         npcMesh.material.ambientColor = new BABYLON.Color3(1, 1, 1);
     }
-    setDemoNPCPosition(playerMesh.position.x, height + 30, playerMesh.position.z + initCharacterDistance);
+    setDemoNPCPosition(playerMesh.position.x, height + initHeightOffset, playerMesh.position.z + initCharacterDistance);
     // default : disable player's control
     demoNPCControl = createControl(npcMesh, null, scene, false);
     allController.push(demoNPCControl);
@@ -466,7 +467,7 @@ var createScene = async function () {
     var nz = [1, 1, 1, 0, -1, -1, -1, 0];
 
     for (let i = 0; i < autoNPCEntity; ++i) {
-        loadAutoNPC(scene, playerMesh.position.x + ((i - (i % 8) + 8) / 8) * 2 * initCharacterDistance * nx[i % 8], height + 30, playerMesh.position.z + ((i - (i % 8) + 8) / 8) * 2 * initCharacterDistance * nz[i % 8], (i % 10) + 1);
+        loadAutoNPC(scene, playerMesh.position.x + ((i - (i % 8) + 8) / 8) * 2 * initCharacterDistance * nx[i % 8], height + initHeightOffset, playerMesh.position.z + ((i - (i % 8) + 8) / 8) * 2 * initCharacterDistance * nz[i % 8], (i % 10) + 1);
     }
 
     scene.registerBeforeRender(function () {
