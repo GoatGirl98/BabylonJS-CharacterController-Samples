@@ -1,5 +1,4 @@
-// todo : set fbx loader and fbx samples
-// import {FBXLoader} from "babylonjs-editor"
+// import { FBXLoader } from '../../node_modules/babylon-fbx-loader/lib/index.d.ts';
 
 var canvas = document.getElementById("renderCanvas");
 
@@ -400,6 +399,10 @@ var createScene = async function () {
     var camera = createDebugCamera();
     
     // load player Mesh
+
+    // BABYLON.SceneLoader.RegisterPlugin(new FBXLoader());
+
+    // BABYLON.SceneLoader.RegisterPlugin(new FBXLoaderModule.FBXLoader());
     
     const playerMeshResult = await BABYLON.SceneLoader.ImportMeshAsync("", "player/", "Vincent-frontFacing.babylon", scene);
     
@@ -447,10 +450,14 @@ window.initFunction = async function () {
         }
     }
 
-    window.engine = await asyncEngineCreation();
+    // window.engine = await asyncEngineCreation();
+    engine = await asyncEngineCreation();
+    window.engine = engine;
     if (!engine) throw 'engine should not be null.';
     startRenderLoop(engine, canvas);
-    window.scene = createScene();
+    // window.scene = createScene();
+    scene = createScene();
+    window.scene = scene;
 };
 initFunction().then(() => {scene.then(returnedScene => { sceneToRender = returnedScene; });});
 
