@@ -1,3 +1,5 @@
+// import * as BABYLON from 'babylonjs'
+
 var canvas = document.getElementById("renderCanvas");
 
 var startRenderLoop = function (engine, canvas) {
@@ -16,9 +18,9 @@ var sceneToRender = null;
 // engine and etc.
 
 // WebGL2 - Parallel shader compilation
-// var createDefaultEngine = function () { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, disableWebGL2Support: false }); };
+var createDefaultEngine = function () { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, disableWebGL2Support: false }); };
 // WebGPU1
-
+/*
 var createDefaultEngine = async function () {
     var engine = new BABYLON.WebGPUEngine(canvas);
     // todo : non compatibility mode for webGPU 
@@ -31,7 +33,7 @@ var createDefaultEngine = async function () {
     await engine.initAsync();
     return engine;
 }
-
+*/
 var createAmbient = function (scene) {
     var ambient = new BABYLON.HemisphericLight("ambient", new BABYLON.Vector3(0.0, 1.0, 0.0), scene);
     ambient.diffuse = new BABYLON.Color3(0.4, 0.4, 0.4);
@@ -79,13 +81,34 @@ var createGround = function (scene, coordY, material, diffTextDir, diffUV, bumpT
     return ground;
 }
 
-var currentControl, playerControl, demoNPCControl;
+// player control : 0  demo control : 1
 var allController = [];
 var autoCommand = [];
 
 var controlIndex; // 0 : player 1 : demo npc
 
 var playerMesh, npcMesh;
+
+var loadMesh = async function(MeshName, rootUrl, fileName, scene, x, y, z) {
+    var meshResult = await BABYLON.SceneLoader.ImportMeshAsync(MeshName, rootUrl, fileName, scene);
+    var mesh = meshResult.meshes[0];
+    mesh.skeleton = meshResult.skeletons[0];
+    mesh.skeleton.enableBlending(0.1);
+
+    if (mesh.material.diffuseTexture != null) {
+        mesh.material.backFaceCulling = true;
+        mesh.material.ambientColor = new BABYLON.Color3(1, 1, 1);
+    }
+
+    mesh.position = new BABYLON.Vector3(x, y, z);
+    console.log("get here");
+    console.log(mesh.position.x.toString() + " " + mesh.position.y.toString() + " " + mesh.position.z.toString());
+    mesh.checkCollisions = true; 
+    mesh.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+    mesh.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
+    return mesh;
+}
+
 
 function setPlayerPosition(x, y, z) {
     playerMesh.position = new BABYLON.Vector3(x, y, z);
@@ -101,7 +124,7 @@ function setDemoNPCPosition(x, y, z) {
     npcMesh.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
 }
 
-var createPlayerCamera = async function(canvas) {
+var createPlayerCamera = async function(canvas, scene) {
     // rotate the camera behind the player
     // player.rotation.y = Math.PI / 4;
     // var alpha = -(Math.PI / 2 + player.rotation.y);
@@ -124,22 +147,25 @@ var createPlayerCamera = async function(canvas) {
     // how far can the camera go from the player
     camera.upperRadiusLimit = 200;
 
-    camera.attachControl(canvas, true);
+    camera.attachControl();
 
     return camera;
 }
 
-var createControl = function (mesh, camera, scene, initKeyboard) {
+var createControl = function (mesh, camera, scene, isPlayer) {
     var control = new CharacterController(mesh, camera, scene);
-    control.setFaceForward(true);
+    control.setFaceForward(isPlayer);
     control.setMode(0);
     control.setTurnSpeed(45);
-    // below makes the controller point the camera at the player head which is approx
-    // 1.5m above the player origin
-    control.setCameraTarget(new BABYLON.Vector3(0, 1.5, 0));
-
-    // if the camera comes close to the player we want to enter first person mode.
-    control.setNoFirstPerson(false);
+    
+    
+    if (isPlayer) {
+        // below makes the controller point the camera at the player head which is approx
+        // 1.5m above the player origin
+        control.setCameraTarget(new BABYLON.Vector3(0, 1.5, 0));
+        // if the camera comes close to the player we want to enter first person mode.
+        control.setNoFirstPerson(false);
+    }
     // the height of steps which the player can climb
     control.setStepOffset(0.4);
     // the minimum and maximum slope the player can go up
@@ -177,16 +203,16 @@ var createControl = function (mesh, camera, scene, initKeyboard) {
         control.setJumpKey("spacebar");
     }
 
-    control.setCameraElasticity(true);
-    control.makeObstructionInvisible(true);
+    control.setCameraElasticity(isPlayer);
+    control.makeObstructionInvisible(isPlayer);
+    control.enableKeyBoard(isPlayer);
     control.start();
-    control.enableKeyBoard(initKeyboard);
     return control;
 }
 
-var createAutoNPCMesh = function(x, y, z) {
-    var npc = npcMesh.clone();
-    npc.skeleton = npcMesh.skeleton.clone();
+var copyNPCMesh = function(originMesh, x, y, z) {
+    var npc = originMesh.clone();
+    npc.skeleton = originMesh.skeleton.clone();
     npc.position = new BABYLON.Vector3(x, y, z);
     npc.checkCollisions = true;
     npc.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
@@ -194,8 +220,8 @@ var createAutoNPCMesh = function(x, y, z) {
     return npc;
 }
 
-function loadAutoNPC(scene, x, y, z, autoMove) {
-    var autoNPCMesh = createAutoNPCMesh(x, y, z);
+function loadAutoNPC(scene, originMesh, x, y, z, autoMove) {
+    var autoNPCMesh = copyNPCMesh(originMesh, x, y, z);
     var autoNPCControl = createControl(autoNPCMesh, null, scene, false);
     allController.push(autoNPCControl);
     autoCommand.push(autoMove);
@@ -229,14 +255,14 @@ function toggleClass(e) {
 
 function setUIValues() {
 
-    document.getElementById("tp").checked = currentControl.getMode() == 0 ? true : false;
-    document.getElementById("td").checked = currentControl.getMode() == 1 ? true : false;
-    document.getElementById("toff").checked = currentControl.isTurningOff();
-    document.getElementById("kb").checked = currentControl.isKeyBoardEnabled();
+    document.getElementById("tp").checked = allController[controlIndex].getMode() == 0 ? true : false;
+    document.getElementById("td").checked = allController[controlIndex].getMode() == 1 ? true : false;
+    document.getElementById("toff").checked = allController[controlIndex].isTurningOff();
+    document.getElementById("kb").checked = allController[controlIndex].isKeyBoardEnabled();
 
-    //for npc third person mode is always disabled.
-    document.getElementById("tp").disabled = (currentControl == demoNPCControl);
-    document.getElementById("toff").disabled = (currentControl == demoNPCControl);
+    // for npc third person mode is always disabled.
+    document.getElementById("tp").disabled = (controlIndex == 1);
+    document.getElementById("toff").disabled = (controlIndex == 0);
 }
 
 
@@ -264,87 +290,88 @@ function setControls() {
 
     //click handlers
     document.getElementById("pc").onclick = function (e) {
-        currentControl = playerControl;
+        controlIndex = 0;
         setUIValues();
         canvas.focus();
     };
 
     document.getElementById("npc").onclick = function (e) {
-        currentControl = demoNPCControl;
+        controlIndex = 1;
         setUIValues();
         canvas.focus();
     };
 
     document.getElementById("w").onclick = function (e) {
-        currentControl.walk((w = !w));
+        allController[controlIndex].walk((w = !w));
         toggleClass(e);
     };
     document.getElementById("wb").onclick = function (e) {
-        currentControl.walkBack((wb = !wb));
+        allController[controlIndex].walkBack((wb = !wb));
         toggleClass(e);
     };
     document.getElementById("wbf").onclick = function (e) {
-        currentControl.walkBackFast((wbf = !wbf));
+        allController[controlIndex].walkBackFast((wbf = !wbf));
         toggleClass(e);
     };
     document.getElementById("r").onclick = function (e) {
-        currentControl.run((r = !r));
+        allController[controlIndex].run((r = !r));
         toggleClass(e);
     };
     document.getElementById("j").onclick = function (e) {
-        currentControl.jump();
+        allController[controlIndex].jump();
         canvas.focus();
     };
     document.getElementById("tl").onclick = function (e) {
-        currentControl.turnLeft((tl = !tl));
+        allController[controlIndex].turnLeft((tl = !tl));
         toggleClass(e);
     };
     document.getElementById("tlf").onclick = function (e) {
-        currentControl.turnLeftFast((tlf = !tlf));
+        allController[controlIndex].turnLeftFast((tlf = !tlf));
         toggleClass(e);
     };
     document.getElementById("tr").onclick = function (e) {
-        currentControl.turnRight((tr = !tr));
+        allController[controlIndex].turnRight((tr = !tr));
         toggleClass(e);
     };
     document.getElementById("trf").onclick = function (e) {
-        currentControl.turnRightFast((trf = !trf));
+        allController[controlIndex].turnRightFast((trf = !trf));
         toggleClass(e);
     };
     document.getElementById("sl").onclick = function (e) {
-        currentControl.strafeLeft((sl = !sl));
+        allController[controlIndex].strafeLeft((sl = !sl));
         toggleClass(e);
     };
     document.getElementById("slf").onclick = function (e) {
-        currentControl.strafeLeftFast((slf = !slf));
+        allController[controlIndex].strafeLeftFast((slf = !slf));
         toggleClass(e);
     };
     document.getElementById("sr").onclick = function (e) {
-        currentControl.strafeRight((sr = !sr));
+        allController[controlIndex].strafeRight((sr = !sr));
         toggleClass(e);
     };
     document.getElementById("srf").onclick = function (e) {
-        currentControl.strafeRightFast((srf = !srf));
+        allController[controlIndex].strafeRightFast((srf = !srf));
         toggleClass(e);
     };
 
     document.getElementById("tp").onclick = function (e) {
-        currentControl.setMode(0);
+        allController[controlIndex].setMode(0);
         canvas.focus();
     };
     document.getElementById("td").onclick = function (e) {
-        currentControl.setMode(1);
+        allController[controlIndex].setMode(1);
         canvas.focus();
     };
     document.getElementById("toff").onclick = function (e) {
-        currentControl.setTurningOff(e.target.checked);
+        allController[controlIndex].setTurningOff(e.target.checked);
         canvas.focus();
     };
     document.getElementById("kb").onclick = function (e) {
-        currentControl.enableKeyBoard(e.target.checked);
+        allController[controlIndex].enableKeyBoard(e.target.checked);
         canvas.focus();
     };
 }
+
 
 
 var createDebugCamera = function() {
@@ -353,6 +380,8 @@ var createDebugCamera = function() {
     camera.attachControl();
     return camera;
 }
+
+
 
 var createScene = async function () {
     var scene = new BABYLON.Scene(engine);
@@ -379,7 +408,7 @@ var createScene = async function () {
     var ambient = createAmbient(scene);
     var sun = createLight(scene);
 
-    var size = 256;
+    var size = 1024;
     var height = 10;
     var subDivisionsForGround = 16;
     var initCharacterDistance = 5;
@@ -397,77 +426,39 @@ var createScene = async function () {
     //var camera = createDebugCamera();
     
     // load player Mesh
+    playerMesh = await loadMesh("", "./player/", "Vincent-frontFacing.babylon", scene, 0, height + initHeightOffset, 0);
     
-    const playerMeshResult = await BABYLON.SceneLoader.ImportMeshAsync("", "player/", "Vincent-frontFacing.babylon", scene);
-    
-    playerMesh = playerMeshResult.meshes[0];
-    playerMesh.skeleton = playerMeshResult.skeletons[0];
-    playerMesh.skeleton.enableBlending(0.1);
+    // load camera
+    var camera = await createPlayerCamera(canvas, scene);
 
-    if (playerMesh.material.diffuseTexture != null) {
-        playerMesh.material.backFaceCulling = true;
-        playerMesh.material.ambientColor = new BABYLON.Color3(1, 1, 1);
-    }
-
-    // set Player's position and camera
-    setPlayerPosition(0, height + initHeightOffset, 0);
-    var alpha = 0;
-    var beta = Math.PI / 2.5;
-    var target = new BABYLON.Vector3(playerMesh.position.x, playerMesh.position.y + 1.5, playerMesh.position.z);
-    var camera = new BABYLON.ArcRotateCamera("ArcRotateCamera", alpha, beta, 5, target, scene);
-    // standard camera setting
-    camera.wheelPrecision = 15;
-    camera.checkCollisions = true;
-    // make sure the keyboard keys controlling camera are different from those controlling player
-    // here we will not use any keyboard keys to control camera
-    camera.keysLeft = [];
-    camera.keysRight = [];
-    camera.keysUp = [];
-    camera.keysDown = [];
-    // how close can the camera come to player
-    camera.lowerRadiusLimit = 2;
-    // how far can the camera go from the player
-    camera.upperRadiusLimit = 200;
-    camera.attachControl(canvas, true);
-    
     // create player control
     // default : enable player's control
-    playerControl = createControl(playerMesh, camera, scene, true);
+
+    var playerControl = createControl(playerMesh, camera, scene, true);
     allController.push(playerControl);
     autoCommand.push(0);
-    // cmd
-    cmds = [playerControl.walk, playerControl.walkBack, playerControl.run, playerControl.jump, playerControl.turnLeft, playerControl.turnRight, playerControl.strafeLeft, playerControl.strafeRight];
-    currentControl = playerControl;
+    // notice back-facing
+    npcMesh = await loadMesh("", "./player/", "Vincent-backFacing.babylon", scene, playerMesh.position.x, height + initHeightOffset, playerMesh.position.z + initCharacterDistance);
+
+    // default : disable player's control
+    var demoNPCControl = createControl(npcMesh, null, scene, false);
+    allController.push(demoNPCControl);
+    autoCommand.push(0);
+
+    controlIndex = 0;
 
     // UI
     setControls();
     showControls();
-
     canvas.focus();
     
-    // demo npc's mesh and control
-    const npcMeshResult = await BABYLON.SceneLoader.ImportMeshAsync("", "player/", "starterAvatars.babylon", scene);
-    npcMesh = npcMeshResult.meshes[0];
-    npcMesh.skeleton = npcMeshResult.skeletons[0];
-    npcMesh.skeleton.enableBlending(0.1);
-
-    if (npcMesh.material.diffuseTexture != null) {
-        npcMesh.material.backFaceCulling = true;
-        npcMesh.material.ambientColor = new BABYLON.Color3(1, 1, 1);
-    }
-    setDemoNPCPosition(playerMesh.position.x, height + initHeightOffset, playerMesh.position.z + initCharacterDistance);
-    // default : disable player's control
-    demoNPCControl = createControl(npcMesh, null, scene, false);
-    allController.push(demoNPCControl);
-    autoCommand.push(0);
-
-    var autoNPCEntity = 30;
+    var autoNPCEntity = 60;
     
     var nx = [-1, 0, 1, 1, 1, 0, -1, -1];
     var nz = [1, 1, 1, 0, -1, -1, -1, 0];
 
     for (let i = 0; i < autoNPCEntity; ++i) {
-        loadAutoNPC(scene, playerMesh.position.x + ((i - (i % 8) + 8) / 8) * 2 * initCharacterDistance * nx[i % 8], height + initHeightOffset, playerMesh.position.z + ((i - (i % 8) + 8) / 8) * 2 * initCharacterDistance * nz[i % 8], (i % 10) + 1);
+        loadAutoNPC(scene, npcMesh, playerMesh.position.x + ((i - (i % 8) + 8) / 8) * 2 * initCharacterDistance * nx[i % 8], height + initHeightOffset, playerMesh.position.z + ((i - (i % 8) + 8) / 8) * 2 * initCharacterDistance * nz[i % 8], (i % 10) + 1);
     }
 
     scene.registerBeforeRender(function () {
@@ -475,7 +466,7 @@ var createScene = async function () {
         skybox.material.cameraColorGradingTexture.level = Math.sin(timeStamp / 120.0) * 0.5 + 0.5;
         timeStamp += 1.0;
         
-        for (let i = 0; i < allController.length; ++i) {
+        for (let i = 2; i < allController.length; ++i) {
             switch (autoCommand[i]) {
                 case 1:
                     if ((Math.abs(timeStamp - 1000.0) <= 1e-9) && (!allController[i].anyMovement())) {
@@ -547,7 +538,7 @@ var createScene = async function () {
         document.getElementById("shader-count").innerHTML = "compiler shaders count : " + engineInstrumentation.shaderCompilationTimeCounter.count;
         document.getElementById("meshes").innerHTML = "Meshes: " + scene.meshes.length;
         document.getElementById("total-character").innerHTML = "Character : " + allController.length;
-        document.getElementById("any-movement").innerHTML = "Player any movement : " + currentControl.anyMovement();
+        document.getElementById("any-movement").innerHTML = "Player any movement : " + allController[controlIndex].getMode();
     });
 
     return scene;
