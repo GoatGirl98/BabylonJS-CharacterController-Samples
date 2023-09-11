@@ -3,6 +3,7 @@
 var canvas = document.getElementById("renderCanvas");
 
 var startRenderLoop = function (engine, canvas) {
+    console.log("in startRenderLoop");
     engine.runRenderLoop(function () {
         if (sceneToRender && sceneToRender.activeCamera) {
             sceneToRender.render();
@@ -18,11 +19,23 @@ var sceneToRender = null;
 // engine and etc.
 
 // WebGL2 - Parallel shader compilation
-var createDefaultEngine = function () { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, disableWebGL2Support: false }); };
+// var createDefaultEngine = function () { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true, disableWebGL2Support: false }); };
 // WebGPU1
-/*
+
 var createDefaultEngine = async function () {
+    console.log("in createDefaultEngine");
     var engine = new BABYLON.WebGPUEngine(canvas);
+    engine.enableOfflineSupport = true;
+
+    // enable webGPUEngine offline
+    const glslangOptions = {
+        jsPath: "../../cdnSnapshot/snapshot-6.20.1/glslang/glslang.js",
+        wasmPath: "../../cdnSnapshot/snapshot-6.20.1/glslang/glslang.wasm",
+    };
+    const twgslOptions = {
+        jsPath: "../../cdnSnapshot/snapshot-6.20.1/twgsl/twgsl.js",
+        wasmPath: "../../cdnSnapshot/snapshot-6.20.1/twgsl/twgsl.wasm",
+    };
     // todo : non compatibility mode for webGPU 
     // cannot use in async scene
     // engine.compatibilityMode = false;
@@ -30,11 +43,16 @@ var createDefaultEngine = async function () {
     // todo : snapshot rendering optimization for webGPU
     // engine.snapshotRenderingMode = BABYLON.Constants.SNAPSHOTRENDERING_FAST (or BABYLON.Constants.SNAPSHOTRENDERING_STANDARD);
     // engine.snapshotRendering = true;
-    await engine.initAsync();
+
+    // default :  use online
+    // await engine.initAsync();
+    // optional : use offline
+    await engine.initAsync(glslangOptions, twgslOptions);
     return engine;
 }
-*/
+
 var createAmbient = function (scene) {
+    // console.log("in createAmbient");
     var ambient = new BABYLON.HemisphericLight("ambient", new BABYLON.Vector3(0.0, 1.0, 0.0), scene);
     ambient.diffuse = new BABYLON.Color3(0.4, 0.4, 0.4);
     ambient.specular = new BABYLON.Color3(0.0, 0.0, 0.0);
@@ -42,6 +60,7 @@ var createAmbient = function (scene) {
 }
 
 var createLight = function (scene) {
+    // console.log("in createLight");
     var light = new BABYLON.DirectionalLight("sun", new BABYLON.Vector3(-1.0, -1.0, -1.0), scene);
     light.diffuse = new BABYLON.Color3(1.0, 1.0, 1.0);
     light.specular = new BABYLON.Color3(1.0, 1.0, 1.0);
@@ -49,6 +68,7 @@ var createLight = function (scene) {
 }
 
 var createSkyBox = function (fileDir, colorGradeDir, scene, size) {
+    // console.log("in createSkyBox");
     var skybox = BABYLON.Mesh.CreateBox("skybox", size, scene);
     skybox.material = new BABYLON.StandardMaterial("skyBox", scene);
     skybox.material.backFaceCulling = false;
@@ -66,6 +86,7 @@ var createSkyBox = function (fileDir, colorGradeDir, scene, size) {
 }
 
 var createGround = function (scene, coordY, material, diffTextDir, diffUV, bumpTextDir, bumpUV, size, subDivisions, height, heightMapDir) {
+    // console.log("in createGround");
     var ground = BABYLON.Mesh.CreateGroundFromHeightMap("ground", heightMapDir, size, size, subDivisions, 0, height, scene);
     ground.position.y = coordY;
     ground.material = new BABYLON.StandardMaterial(material, scene);
@@ -90,6 +111,7 @@ var controlIndex; // 0 : player 1 : demo npc
 var playerMesh, npcMesh;
 
 var loadMesh = async function(MeshName, rootUrl, fileName, scene, x, y, z) {
+    // console.log("in loadMesh");
     var meshResult = await BABYLON.SceneLoader.ImportMeshAsync(MeshName, rootUrl, fileName, scene);
     var mesh = meshResult.meshes[0];
     mesh.skeleton = meshResult.skeletons[0];
@@ -109,22 +131,8 @@ var loadMesh = async function(MeshName, rootUrl, fileName, scene, x, y, z) {
     return mesh;
 }
 
-
-function setPlayerPosition(x, y, z) {
-    playerMesh.position = new BABYLON.Vector3(x, y, z);
-    playerMesh.checkCollisions = true;
-    playerMesh.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
-    playerMesh.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
-}
-
-function setDemoNPCPosition(x, y, z) {
-    npcMesh.position = new BABYLON.Vector3(x, y, z);
-    npcMesh.checkCollisions = true;
-    npcMesh.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
-    npcMesh.ellipsoidOffset = new BABYLON.Vector3(0, 1, 0);
-}
-
 var createPlayerCamera = async function(canvas, scene) {
+    // console.log("in createPlayerCamera");
     // rotate the camera behind the player
     // player.rotation.y = Math.PI / 4;
     // var alpha = -(Math.PI / 2 + player.rotation.y);
@@ -153,6 +161,7 @@ var createPlayerCamera = async function(canvas, scene) {
 }
 
 var createControl = function (mesh, camera, scene, isPlayer) {
+    // console.log("in createControl");
     var control = new CharacterController(mesh, camera, scene);
     control.setFaceForward(isPlayer);
     control.setMode(0);
@@ -211,6 +220,7 @@ var createControl = function (mesh, camera, scene, isPlayer) {
 }
 
 var copyNPCMesh = function(originMesh, x, y, z) {
+    // console.log("in copyNPCMesh");
     var npc = originMesh.clone();
     npc.skeleton = originMesh.skeleton.clone();
     npc.position = new BABYLON.Vector3(x, y, z);
@@ -221,6 +231,7 @@ var copyNPCMesh = function(originMesh, x, y, z) {
 }
 
 function loadAutoNPC(scene, originMesh, x, y, z, autoMove) {
+    // console.log("in loadAutoNPC");
     var autoNPCMesh = copyNPCMesh(originMesh, x, y, z);
     var autoNPCControl = createControl(autoNPCMesh, null, scene, false);
     allController.push(autoNPCControl);
@@ -229,6 +240,7 @@ function loadAutoNPC(scene, originMesh, x, y, z, autoMove) {
 
 
 function showControls() {
+    // console.log("in showControls");
     document.getElementById("controls").style.visibility = "visible";
 }
 
@@ -248,13 +260,14 @@ var w,
     srf = false;
 
 function toggleClass(e) {
+    // console.log("in toggleClass");
     e.target.classList.toggle("w3-pale-red");
     e.target.classList.toggle("w3-pale-green");
     canvas.focus();
 }
 
 function setUIValues() {
-
+    // console.log("in setUIValues");
     document.getElementById("tp").checked = allController[controlIndex].getMode() == 0 ? true : false;
     document.getElementById("td").checked = allController[controlIndex].getMode() == 1 ? true : false;
     document.getElementById("toff").checked = allController[controlIndex].isTurningOff();
@@ -269,6 +282,7 @@ function setUIValues() {
 
 
 function setControls() {
+    // console.log("in setControls");
     const x = document.getElementsByTagName("button");
 
     //init style
@@ -374,7 +388,8 @@ function setControls() {
 
 
 
-var createDebugCamera = function() {
+var createDebugCamera = async function() {
+    // console.log("in createDebugCamera");
     var camera = new BABYLON.ArcRotateCamera("ArcRotateCamera", 0, 0, 10, BABYLON.Vector3.Zero(), scene);
     camera.setPosition(new BABYLON.Vector3(-15, 3, 0));
     camera.attachControl();
@@ -384,7 +399,11 @@ var createDebugCamera = function() {
 
 
 var createScene = async function () {
+    // console.log("the things need to download for offline use:");
+    // console.log(BABYLON.DracoCompression.Configuration.decoder);
+    // console.log("in createScene");
     var scene = new BABYLON.Scene(engine);
+    // console.log("create scene success");
     scene.clearColor = new BABYLON.Color3(0.75, 0.75, 0.75);
     scene.ambientColor = new BABYLON.Color3(1, 1, 1);
 
@@ -437,7 +456,7 @@ var createScene = async function () {
     var playerControl = createControl(playerMesh, camera, scene, true);
     allController.push(playerControl);
     autoCommand.push(0);
-    // notice back-facing
+
     npcMesh = await loadMesh("", "./player/", "Vincent-backFacing.babylon", scene, playerMesh.position.x, height + initHeightOffset, playerMesh.position.z + initCharacterDistance);
 
     // default : disable player's control
@@ -546,6 +565,8 @@ var createScene = async function () {
 
 
 window.initFunction = async function () {
+    // console.log("in window.initFunction");
+
     var asyncEngineCreation = async function () {
         try {
             return createDefaultEngine();
@@ -555,10 +576,13 @@ window.initFunction = async function () {
         }
     }
 
-    window.engine = await asyncEngineCreation();
-    if (!engine) throw 'engine should not be null.';
+    engine = await asyncEngineCreation();
+    window.engine = engine;
+    if (!window.engine) throw 'engine should not be null.';
+    else console.log("load engine success");
     startRenderLoop(engine, canvas);
-    window.scene = createScene();
+    scene = createScene();
+    window.scene = scene;
 };
 initFunction().then(() => {scene.then(returnedScene => { sceneToRender = returnedScene; });});
 
