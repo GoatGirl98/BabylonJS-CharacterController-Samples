@@ -151,7 +151,7 @@ window.onload = function () {
       cc = new CharacterController(player, camera, scene, agMap, true);
       
   
-      cc.setMode(1);
+      cc.setMode(0);
       //below makes the controller point the camera at the player head which is approx
       //1.5m above the player origin
       cc.setCameraTarget(new BABYLON.Vector3(0, 2, 0));
